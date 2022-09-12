@@ -114,6 +114,22 @@ struct SongState
 	YMTune tune;
 };
 
+const char* byte_to_binary
+(
+	int x
+)
+{
+	static char b[9];
+	b[0] = '\0';
+
+	int z;
+	for (z = 128; z > 0; z >>= 1)
+	{
+		strcat(b, ((x & z) == z) ? "1" : "0");
+	}
+
+	return b;
+}
 
 SongState play_song(YMTune &tune) {
 	SongState state;
@@ -125,18 +141,35 @@ SongState play_song(YMTune &tune) {
 	return state;
 }
 
+void usage(char *argv[]) {
+	output("usage: %s YMFile [com-port]\n", argv[0]);
+}
+
 int main(int argc, char **argv)
 {
 	YMTune tune;
 	bool have_tune = false;
 
-	if (argc > 1) {
-		have_tune = load_ym(argv[1], tune);
+	char* port = "com3";
+	if (argc > 2) {
+		port = argv[2];
 	}
-
-	void *comm_handle = uart::open("com3", 57600);
+	
+	if (argc > 1) {
+		if (strcmp(argv[1], "-h")==0) {
+			usage(argv);
+			exit(0);
+		}
+		have_tune = load_ym(argv[1], tune);
+	}else {
+		usage(argv);
+		exit(1);
+	}
+	
+	output("opening comm port %s\n", port);
+	void *comm_handle = uart::open(port, 57600);
 	if (comm_handle == (void*)-1) {
-		output("couldn't open com port for serial communincation\n");
+		output("couldn't open com port %s for serial communincation\n", port);
 		return 0;
 	}
 
@@ -193,6 +226,13 @@ int main(int argc, char **argv)
 
 		
 		if (current_song.is_playing) {
+			char* bbb = &current_song.tune.data.registers[current_song.current_frame * 16];
+			
+			for (int ii = 0; ii < 14; ii++) {
+				printf("%s ", byte_to_binary(*bbb));
+			}
+			printf("\n");
+
 			int bytes = uart::send_bytes(comm_handle, (uint8_t*)&current_song.tune.data.registers[current_song.current_frame * 16], 16);
 			bytes_sent += bytes;
 			auto song_time = std::chrono::steady_clock::now() - current_song.song_start;
@@ -214,7 +254,7 @@ int main(int argc, char **argv)
 
 	} while(!quit);
 
-
+	
 	// clear registers
 	for (int j = 0; j < 16; ++j)
 		uart::send_byte(comm_handle, stop_byte);
